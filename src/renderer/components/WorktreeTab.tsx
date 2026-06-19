@@ -13,7 +13,7 @@ import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
 import { TicketProviderIcon } from './TicketProvidersSettings'
-import { useCachedTicket, useTicketProviders, useWorktreeLinkedTicket } from '../tickets-stub'
+import { useCachedTicket, useTicketProviders, useWorktreeLinkedTicket } from '../store'
 import { useBackend } from '../backend'
 import type { WorktreeTicketLink } from '../../shared/tickets'
 
@@ -315,7 +315,7 @@ function LinkedTicketChip({ worktreePath }: LinkedTicketChipProps): JSX.Element 
   // selector.
   useEffect(() => {
     if (link && !cached) {
-      void backend.tickets.get(link.providerId, link.externalId)
+      void backend.ticketsGet(link.providerId, link.externalId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [link])

@@ -1,7 +1,7 @@
 // Search + merge logic shared by the picker. Extracted so it's
 // trivially testable without mounting React — same `list(providerId,
 // query)` boundary the picker uses, just typed against the per-
-// provider TicketProvider contract instead of `backend.tickets.list`.
+// provider TicketProvider contract instead of `backend.ticketsList`.
 
 import type { Ticket, TicketProviderConfig } from '../shared/tickets'
 

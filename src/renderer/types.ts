@@ -646,6 +646,7 @@ export interface ElectronAPI {
     providerId: string,
     repoRoots: string[]
   ): Promise<TicketProviderConfig | null>
+  ticketsHasProviderToken(providerId: string): Promise<boolean>
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.

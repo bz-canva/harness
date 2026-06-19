@@ -12,10 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X, Loader2, Settings as SettingsIcon, AlertCircle } from 'lucide-react'
 import type { Ticket, TicketProviderConfig } from '../../shared/tickets'
 import { useBackend } from '../backend'
-import {
-  useRepoLinkedProviderIds,
-  useTicketProviders
-} from '../tickets-stub'
+import { useRepoLinkedProviderIds, useTicketProviders } from '../store'
 import { TicketProviderIcon } from './TicketProvidersSettings'
 import { searchAndMergeTickets, type ListTicketsFn, type MergedTicketRow } from '../ticket-search'
 
@@ -25,7 +22,7 @@ interface TicketPickerModalProps {
   onSelect: (ticket: Ticket, provider: TicketProviderConfig) => void
   /** Per-provider fetch fn. Injected so component tests can swap in a
    *  deterministic mock; production callers always omit and get the
-   *  default that routes through `backend.tickets.list`. */
+   *  default that routes through `backend.ticketsList`. */
   listTickets?: ListTicketsFn
   /** Click handler for the "Configure providers" empty-state link.
    *  Optional — when absent we just render a link-shaped span. */
@@ -88,7 +85,7 @@ export function TicketPickerModal({
     let cancelled = false
     setState((s) => ({ ...s, loading: true }))
     const fetcher: ListTicketsFn =
-      listTickets ?? ((providerId: string, q: string) => backend.tickets.list(providerId, q))
+      listTickets ?? ((providerId: string, q: string) => backend.ticketsList(providerId, q))
     void (async () => {
       const { rows, errors } = await searchAndMergeTickets(linkedProviders, debouncedQuery, fetcher)
       if (cancelled) return

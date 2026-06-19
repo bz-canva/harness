@@ -173,7 +173,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       setShowNewWorktree(false)
 
       // Main handles everything: addWorktree → setup script → ensureInitialized
-      // (with the prompt embedded in the new agent tab) → outcome.
+      // (with the prompt embedded in the new agent tab) → outcome. The
+      // FSM carries linkedTicket through and persists it onto the worktree
+      // via the side-table — no post-hoc renderer call needed.
       const result = await backend.runPendingWorktree({
         id,
         repoRoot,
@@ -183,23 +185,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         agentKind,
         model,
         checkoutExisting,
-        baseRef
+        baseRef,
+        linkedTicket
       })
 
       if (result.outcome === 'success') {
         setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
-        // Record the ticket link against the now-known worktree path.
-        // The data workstream will replace this with a `linkedTicket`
-        // field on `runPendingWorktree` that flows through the FSM and
-        // lands on the worktrees slice directly — at which point this
-        // post-hoc call goes away.
-        if (linkedTicket) {
-          void backend.tickets.linkWorktree(result.createdPath, linkedTicket)
-        }
-      } else if (linkedTicket && result.outcome === 'setup-failed' && 'createdPath' in result) {
-        // Same as success path — the worktree exists on disk even though
-        // the setup script failed, so the link still applies.
-        void backend.tickets.linkWorktree(result.createdPath, linkedTicket)
       }
       // On 'error' we stay on the pending id so the error screen shows.
     },

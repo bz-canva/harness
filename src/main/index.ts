@@ -63,7 +63,6 @@ import {
   type QuestStep
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
-import { effectiveTicketProviderIds } from '../shared/state/repo-configs'
 import {
   createTicketProvider,
   validateProviderConfig
@@ -869,6 +868,18 @@ function setWorktreeTicketLink(
     config.worktreeTicketLinks = links
   }
   saveConfig(config)
+}
+
+function normalizeAppliesToRepoRoots(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const root of input) {
+    if (typeof root !== 'string' || !root || seen.has(root)) continue
+    seen.add(root)
+    out.push(root)
+  }
+  return out
 }
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -3587,11 +3598,13 @@ function registerIpcHandlers(): void {
       const validatedConfig = validateProviderConfig(type, input.config)
       if (!validatedConfig) return null
       const id = randomUUID()
+      const applies = normalizeAppliesToRepoRoots(input.appliesToRepoRoots)
       const next: TicketProviderConfig = {
         id,
         label: String(input.label || '').trim() || 'Untitled provider',
         type,
-        config: validatedConfig
+        config: validatedConfig,
+        appliesToRepoRoots: applies.length > 0 ? applies : undefined
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = next
@@ -3630,6 +3643,11 @@ function registerIpcHandlers(): void {
         if (!validated) return null
         nextConfig = validated
       }
+      let nextApplies = existing.appliesToRepoRoots
+      if (patch?.appliesToRepoRoots !== undefined) {
+        const cleaned = normalizeAppliesToRepoRoots(patch.appliesToRepoRoots)
+        nextApplies = cleaned.length > 0 ? cleaned : undefined
+      }
       const updated: TicketProviderConfig = {
         id: existing.id,
         type: existing.type,
@@ -3637,7 +3655,8 @@ function registerIpcHandlers(): void {
           typeof patch?.label === 'string' && patch.label.trim().length > 0
             ? patch.label.trim()
             : existing.label,
-        config: nextConfig
+        config: nextConfig,
+        appliesToRepoRoots: nextApplies
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = updated
@@ -3653,7 +3672,15 @@ function registerIpcHandlers(): void {
       }
       store.dispatch({
         type: 'ticketProviders/updated',
-        payload: { id, patch: { label: updated.label, type: updated.type, config: updated.config } }
+        payload: {
+          id,
+          patch: {
+            label: updated.label,
+            type: updated.type,
+            config: updated.config,
+            appliesToRepoRoots: updated.appliesToRepoRoots
+          }
+        }
       })
       return updated
     }
@@ -3687,19 +3714,6 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     deleteSecret(`ticket-provider-token:${id}`)
-    // Also strip the id from any repo's ticketProviderIds so we don't
-    // leave dangling references behind.
-    for (const repoRoot of Object.keys(store.getSnapshot().state.repoConfigs.byRepo)) {
-      const cfg = loadRepoConfig(repoRoot)
-      const ids = effectiveTicketProviderIds(cfg)
-      if (!ids.includes(id)) continue
-      const nextIds = ids.filter((x) => x !== id)
-      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
-      store.dispatch({
-        type: 'repoConfigs/changed',
-        payload: { repoRoot, config: saved }
-      })
-    }
     store.dispatch({ type: 'ticketProviders/removed', payload: id })
     // Refresh the worktree list so any decorated linkedTicket disappears
     // from the renderer's view.
@@ -3752,39 +3766,60 @@ function registerIpcHandlers(): void {
     }
   )
 
+  // Provider-owned M2M: the provider carries its own list of repo roots
+  // it should surface in. The picker in repo X surfaces every provider
+  // whose appliesToRepoRoots contains X. See src/shared/tickets.ts.
   transport.onRequest(
-    'tickets:linkRepoProvider',
-    (_ctx, repoRoot: string, providerId: string): boolean => {
-      if (!repoRoot || !providerId) return false
-      const cfg = loadRepoConfig(repoRoot)
-      const ids = effectiveTicketProviderIds(cfg)
-      if (ids.includes(providerId)) return true
-      const nextIds = [...ids, providerId]
-      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
+    'tickets:setProviderAppliesTo',
+    (
+      _ctx,
+      providerId: string,
+      repoRoots: string[]
+    ): TicketProviderConfig | null => {
+      if (!providerId || typeof providerId !== 'string') return null
+      const existing = (config.ticketProviders || {})[providerId]
+      if (!existing) return null
+      const seen = new Set<string>()
+      const cleaned: string[] = []
+      for (const root of repoRoots || []) {
+        if (typeof root !== 'string' || !root || seen.has(root)) continue
+        seen.add(root)
+        cleaned.push(root)
+      }
+      const updated: TicketProviderConfig = {
+        ...existing,
+        appliesToRepoRoots: cleaned.length > 0 ? cleaned : undefined
+      }
+      const providers = { ...(config.ticketProviders || {}) }
+      providers[providerId] = updated
+      config.ticketProviders = providers
+      saveConfig(config)
       store.dispatch({
-        type: 'repoConfigs/changed',
-        payload: { repoRoot, config: saved }
+        type: 'ticketProviders/updated',
+        payload: {
+          id: providerId,
+          patch: {
+            label: updated.label,
+            type: updated.type,
+            config: updated.config,
+            appliesToRepoRoots: updated.appliesToRepoRoots
+          }
+        }
       })
-      return true
+      return updated
     }
   )
 
-  transport.onRequest(
-    'tickets:unlinkRepoProvider',
-    (_ctx, repoRoot: string, providerId: string): boolean => {
-      if (!repoRoot || !providerId) return false
-      const cfg = loadRepoConfig(repoRoot)
-      const ids = effectiveTicketProviderIds(cfg)
-      if (!ids.includes(providerId)) return false
-      const nextIds = ids.filter((x) => x !== providerId)
-      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
-      store.dispatch({
-        type: 'repoConfigs/changed',
-        payload: { repoRoot, config: saved }
-      })
-      return true
-    }
-  )
+  // Only Notion uses the per-provider token slot — but Settings still
+  // needs to know whether a token exists so it can render "Token
+  // configured" / "Replace token" vs. "Add token". The actual token is
+  // never returned over IPC.
+  transport.onRequest('tickets:hasProviderToken', (_ctx, providerId: string): boolean => {
+    if (!providerId || typeof providerId !== 'string') return false
+    const cfg = (config.ticketProviders || {})[providerId]
+    if (!cfg || cfg.type !== 'notion') return false
+    return getSecret(`ticket-provider-token:${providerId}`) !== null
+  })
 }
 
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {

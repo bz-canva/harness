@@ -633,7 +633,9 @@ export function buildBackend(
     ticketsGet: (providerId: string, externalId: string) =>
       req('tickets:get', providerId, externalId),
     ticketsSetProviderAppliesTo: (providerId: string, repoRoots: string[]) =>
-      req('tickets:setProviderAppliesTo', providerId, repoRoots)
+      req('tickets:setProviderAppliesTo', providerId, repoRoots),
+    ticketsHasProviderToken: (providerId: string) =>
+      req('tickets:hasProviderToken', providerId)
   }
 
   return api as ElectronAPI

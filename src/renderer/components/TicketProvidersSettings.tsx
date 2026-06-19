@@ -5,16 +5,35 @@
 // carries its own project membership list (which repos its tickets show
 // up in), edited inline in the provider form via a checkbox list of the
 // user's known repos. No per-repo .harness.json plumbing needed.
-//
-// All state goes through the renderer-side stub at
-// `src/renderer/tickets-stub.ts`; at merge time these calls become real
-// `window.api.tickets.*` IPC round-trips with no UI changes.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, Trash2, Pencil, Check, CircleDot, BookOpen, AlertCircle } from 'lucide-react'
 import { useBackend } from '../backend'
-import { useTicketProviders, useTicketProviderHasToken } from '../tickets-stub'
-import { useWorktrees } from '../store'
+import { useTicketProviders, useWorktrees } from '../store'
+
+/** Asks main whether the given provider has a token recorded in
+ *  secrets.enc. Tokens are write-only over IPC, so this is the only way
+ *  to drive the "Token configured" / "Replace token" UX state.
+ *  Re-fires whenever `id` or `version` changes — bump `version` after a
+ *  successful add/update/replace to refresh. */
+function useTicketProviderHasToken(id: string, version: number = 0): boolean {
+  const backend = useBackend()
+  const [hasToken, setHasToken] = useState(false)
+  useEffect(() => {
+    if (!id) {
+      setHasToken(false)
+      return
+    }
+    let cancelled = false
+    void backend.ticketsHasProviderToken(id).then((v) => {
+      if (!cancelled) setHasToken(Boolean(v))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [backend, id, version])
+  return hasToken
+}
 import { RepoIcon } from './RepoIcon'
 import type {
   GithubIssuesConfig,
@@ -132,7 +151,7 @@ function TicketProviderRow({ provider, onEdit }: TicketProviderRowProps): JSX.El
     // for low-blast-radius removes; the user can re-add if it was an
     // accident. Real GitHub/Notion impls will lose only the cached
     // config + token, not the upstream data.
-    await backend.tickets.removeProvider(provider.id)
+    await backend.ticketsRemoveProvider(provider.id)
   }
 
   return (
@@ -261,13 +280,13 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
               descriptionProperty: notionDescriptionProperty.trim() || undefined
             }
       if (initial) {
-        await backend.tickets.updateProvider(
+        await backend.ticketsUpdateProvider(
           initial.id,
           { label: label.trim(), config, appliesToRepoRoots },
           replaceToken && token ? token : undefined
         )
       } else {
-        await backend.tickets.addProvider(
+        await backend.ticketsAddProvider(
           { label: label.trim(), type, config, appliesToRepoRoots },
           replaceToken && token ? token : undefined
         )

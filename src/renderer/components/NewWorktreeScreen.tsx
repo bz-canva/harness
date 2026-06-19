@@ -15,7 +15,7 @@ import type {
 import { TicketPickerModal } from './TicketPickerModal'
 import { TicketProviderIcon } from './TicketProvidersSettings'
 import { renderTicketPrompt, suggestedBranchName, toWorktreeTicketLink } from '../ticket-prompt'
-import { useRepoLinkedProviderIds } from '../tickets-stub'
+import { useRepoLinkedProviderIds } from '../store'
 
 interface NewWorktreeScreenProps {
   onSubmit: (
