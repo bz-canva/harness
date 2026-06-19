@@ -280,6 +280,13 @@ export function buildBackend(
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
     setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
+    // Ticket worktree prompt template — the ticket-data workstream will
+    // land the `config:setTicketWorktreePromptTemplate` IPC handler. Until
+    // then we route through the same handler name; if main doesn't
+    // recognize it the request will reject and the textarea will surface
+    // the error. Once the data PR lands this becomes a real round-trip.
+    setTicketWorktreePromptTemplate: (template: string) =>
+      req('config:setTicketWorktreePromptTemplate', template),
     prepareMcpForTerminal: (terminalId: string) =>
       req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
@@ -625,10 +632,8 @@ export function buildBackend(
       req('tickets:list', providerId, query),
     ticketsGet: (providerId: string, externalId: string) =>
       req('tickets:get', providerId, externalId),
-    ticketsLinkRepoProvider: (repoRoot: string, providerId: string) =>
-      req('tickets:linkRepoProvider', repoRoot, providerId),
-    ticketsUnlinkRepoProvider: (repoRoot: string, providerId: string) =>
-      req('tickets:unlinkRepoProvider', repoRoot, providerId)
+    ticketsSetProviderAppliesTo: (providerId: string, repoRoots: string[]) =>
+      req('tickets:setProviderAppliesTo', providerId, repoRoots)
   }
 
   return api as ElectronAPI

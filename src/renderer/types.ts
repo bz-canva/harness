@@ -363,6 +363,7 @@ export interface ElectronAPI {
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
   setPrReviewPrompt(prompt: string): Promise<boolean>
+  setTicketWorktreePromptTemplate(template: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
@@ -625,7 +626,9 @@ export interface ElectronAPI {
   connectionsHasToken(id: string): Promise<boolean>
 
   // Ticket providers + tickets (first-party ticket-system integration).
-  // See src/shared/tickets.ts for the contract.
+  // See src/shared/tickets.ts for the contract. The M2M is provider-owned:
+  // each provider carries its own `appliesToRepoRoots` list; the picker in
+  // repo X surfaces every provider whose list contains X.
   ticketsListProviders(): Promise<TicketProviderConfig[]>
   ticketsAddProvider(
     config: Omit<TicketProviderConfig, 'id'>,
@@ -639,8 +642,10 @@ export interface ElectronAPI {
   ticketsRemoveProvider(id: string): Promise<boolean>
   ticketsList(providerId: string, query?: string): Promise<Ticket[]>
   ticketsGet(providerId: string, externalId: string): Promise<Ticket | null>
-  ticketsLinkRepoProvider(repoRoot: string, providerId: string): Promise<boolean>
-  ticketsUnlinkRepoProvider(repoRoot: string, providerId: string): Promise<boolean>
+  ticketsSetProviderAppliesTo(
+    providerId: string,
+    repoRoots: string[]
+  ): Promise<TicketProviderConfig | null>
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.
