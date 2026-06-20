@@ -139,7 +139,10 @@ function repoBasename(repoRoot: string): string {
 
 function TicketProviderRow({ provider, onEdit }: TicketProviderRowProps): JSX.Element {
   const backend = useBackend()
-  const hasToken = useTicketProviderHasToken(provider.id)
+  // GitHub providers reuse the shared GitHub PAT / gh-cli token resolved at
+  // boot — there's no per-provider token to track or display.
+  const needsToken = provider.type === 'notion'
+  const hasToken = useTicketProviderHasToken(needsToken ? provider.id : '')
   const summary =
     provider.type === 'github-issues'
       ? (provider.config as GithubIssuesConfig).repo
@@ -149,8 +152,7 @@ function TicketProviderRow({ provider, onEdit }: TicketProviderRowProps): JSX.El
   const handleRemove = async (): Promise<void> => {
     // Mirror existing Settings.tsx convention — no inline confirm modal
     // for low-blast-radius removes; the user can re-add if it was an
-    // accident. Real GitHub/Notion impls will lose only the cached
-    // config + token, not the upstream data.
+    // accident.
     await backend.ticketsRemoveProvider(provider.id)
   }
 
@@ -167,16 +169,18 @@ function TicketProviderRow({ provider, onEdit }: TicketProviderRowProps): JSX.El
           </div>
           <div className="text-xs text-faint font-mono truncate">{summary || '—'}</div>
         </div>
-        <span
-          className={`text-xs shrink-0 ${hasToken ? 'text-success' : 'text-warning'}`}
-          title={
-            hasToken
-              ? 'A token is configured for this provider'
-              : 'No token configured — list/get calls may be rate-limited or fail'
-          }
-        >
-          {hasToken ? 'Token configured' : 'No token'}
-        </span>
+        {needsToken && (
+          <span
+            className={`text-xs shrink-0 ${hasToken ? 'text-success' : 'text-warning'}`}
+            title={
+              hasToken
+                ? 'A token is configured for this provider'
+                : 'No token configured — list/get calls may be rate-limited or fail'
+            }
+          >
+            {hasToken ? 'Token configured' : 'No token'}
+          </span>
+        )}
         <button
           type="button"
           onClick={onEdit}
@@ -226,8 +230,11 @@ interface TicketProviderFormProps {
 function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormProps): JSX.Element {
   const backend = useBackend()
   const worktrees = useWorktrees()
-  const hasExistingToken = useTicketProviderHasToken(initial?.id ?? '')
   const [type, setType] = useState<TicketProviderType>(initial?.type ?? 'github-issues')
+  // GitHub providers reuse the shared GitHub PAT / gh-cli token resolved at
+  // boot — no per-provider token slot. Only Notion uses it.
+  const needsToken = type === 'notion'
+  const hasExistingToken = useTicketProviderHasToken(needsToken ? (initial?.id ?? '') : '')
   const [label, setLabel] = useState(initial?.label ?? '')
   const initialGh =
     initial && initial.type === 'github-issues'
@@ -440,37 +447,39 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
         </p>
       </div>
 
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">Token</div>
-        {hasExistingToken && !replaceToken ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-success">Token configured</span>
-            <button
-              type="button"
-              onClick={() => setReplaceToken(true)}
-              className="text-xs text-dim hover:text-fg underline cursor-pointer"
-            >
-              Replace token
-            </button>
-          </div>
-        ) : (
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={
-              type === 'github-issues'
-                ? 'ghp_… (needs the repo scope)'
-                : 'Notion integration token (secret_…)'
-            }
-            autoComplete="off"
-            className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
-          />
-        )}
-        <p className="mt-1 text-xs text-faint">
-          Tokens stay write-only — Harness encrypts them in <code className="bg-panel-raised px-1 rounded">secrets.enc</code> and never reads them back.
+      {needsToken ? (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">Token</div>
+          {hasExistingToken && !replaceToken ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-success">Token configured</span>
+              <button
+                type="button"
+                onClick={() => setReplaceToken(true)}
+                className="text-xs text-dim hover:text-fg underline cursor-pointer"
+              >
+                Replace token
+              </button>
+            </div>
+          ) : (
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Notion integration token (secret_…)"
+              autoComplete="off"
+              className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
+            />
+          )}
+          <p className="mt-1 text-xs text-faint">
+            Tokens stay write-only — Harness encrypts them in <code className="bg-panel-raised px-1 rounded">secrets.enc</code> and never reads them back.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-faint">
+          GitHub providers reuse the same token Harness uses for PR data — either your Settings PAT or the local <code className="bg-panel-raised px-1 rounded">gh</code> CLI's auth. No per-provider token needed here.
         </p>
-      </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-1.5 text-xs text-danger bg-danger/10 border border-danger/30 rounded px-2 py-1.5">
